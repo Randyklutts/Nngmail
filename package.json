@@ -1,0 +1,23 @@
+{
+  "name": "telegram-form-server",
+  "version": "1.0.0",
+  "description": "Express server for receiving form submissions and forwarding them to Telegram.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "express",
+    "telegram",
+    "api",
+    "forms"
+  ],
+  "author": "Samuel Iheanacho",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "node-fetch": "^2.7.0"
+  }
+}
