@@ -13,6 +13,7 @@ const {
   ALLOWED_ORIGINS = '',
 } = process.env;
 
+// Validate required environment variables
 if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
   console.error(
     'Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID. Copy .env.example to .env and fill it in.'
@@ -22,20 +23,24 @@ if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
 
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
+// ---------------- Middleware ----------------
+
 const allowedOrigins = ALLOWED_ORIGINS
   .split(',')
-  .map(o => o.trim())
+  .map((o) => o.trim())
   .filter(Boolean);
 
 app.use(
   cors({
     origin: allowedOrigins.length ? allowedOrigins : '*',
-    methods: ['POST', 'GET'],
+    methods: ['GET', 'POST'],
   })
 );
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ---------------- Rate Limiter ----------------
 
 const rateLimitWindowMs = 60 * 1000;
 const rateLimitMax = 5;
@@ -45,14 +50,17 @@ function rateLimit(req, res, next) {
   const ip = req.ip;
   const now = Date.now();
 
-  const record = hits.get(ip) || { count: 0, start: now };
+  const record = hits.get(ip) || {
+    count: 0,
+    start: now,
+  };
 
   if (now - record.start > rateLimitWindowMs) {
     record.count = 0;
     record.start = now;
   }
 
-  record.count += 1;
+  record.count++;
   hits.set(ip, record);
 
   if (record.count > rateLimitMax) {
@@ -65,17 +73,26 @@ function rateLimit(req, res, next) {
   next();
 }
 
+// ---------------- Helpers ----------------
+
+// Escape Telegram MarkdownV2 characters
 function escapeMarkdownV2(text = '') {
-  return String(text).replace(/[_*[\]()~`>#+\-=|{}.!\\]/g, '\\$&');
+  return String(text).replace(
+    /[_*[\]()~`>#+\-=|{}.!\\]/g,
+    '\\$&'
+  );
 }
 
+// Build Telegram message
 function buildMessage(fields) {
   const lines = ['*New Form Submission*', ''];
 
   for (const [key, value] of Object.entries(fields)) {
     const label = escapeMarkdownV2(key);
     const val = escapeMarkdownV2(
-      Array.isArray(value) ? value.join(', ') : String(value ?? '')
+      Array.isArray(value)
+        ? value.join(', ')
+        : String(value ?? '')
     );
 
     lines.push(`*${label}:* ${val}`);
@@ -85,7 +102,7 @@ function buildMessage(fields) {
 }
 
 async function sendToTelegram(text) {
-  const res = await fetch(`${TELEGRAM_API}/sendMessage`, {
+  const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -97,7 +114,7 @@ async function sendToTelegram(text) {
     }),
   });
 
-  const data = await res.json();
+  const data = await response.json();
 
   if (!data.ok) {
     throw new Error(data.description || 'Telegram API error');
@@ -106,10 +123,14 @@ async function sendToTelegram(text) {
   return data;
 }
 
+// ---------------- Routes ----------------
+
+// Health check
 app.get('/health', (req, res) => {
   res.json({ ok: true });
 });
 
+// Form submission endpoint
 app.post('/api/submit', rateLimit, async (req, res) => {
   try {
     const fields = req.body;
@@ -121,6 +142,7 @@ app.post('/api/submit', rateLimit, async (req, res) => {
       });
     }
 
+    // Honeypot spam field
     if (fields.website) {
       return res.json({ ok: true });
     }
@@ -133,6 +155,7 @@ app.post('/api/submit', rateLimit, async (req, res) => {
       ok: true,
       message: 'Sent to Telegram successfully.',
     });
+
   } catch (err) {
     console.error('Error sending to Telegram:', err.message);
 
@@ -143,6 +166,7 @@ app.post('/api/submit', rateLimit, async (req, res) => {
   }
 });
 
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
