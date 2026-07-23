@@ -1,17 +1,19 @@
 {
-  "name": "telegram-form-backend",
+  "name": "form-backend",
   "version": "1.0.0",
-  "description": "Express backend that sends form submissions to Telegram",
-  "main": "index.js",
-  "license": "MIT",
+  "description": "Backend server to receive form data and send email",
+  "main": "server.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
+    "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "node-fetch": "^2.7.0"
+    "express": "^4.18.2",
+    "nodemailer": "^6.9.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
   }
 }
